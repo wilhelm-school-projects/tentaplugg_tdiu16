@@ -21,6 +21,8 @@ struct thread_pool {
 
     // Array av worker-trådar.
     struct worker *workers;
+
+    struct semaphore avail_worker_sema;
 };
 
 
@@ -36,6 +38,9 @@ struct worker {
     const char *to_process;
     struct lock to_process_lock;
 
+    bool ready;
+
+    struct semaphore request_sema;
     // Pekare till den "thread_pool" som tråden hör till.
     struct thread_pool *owner;
 };
@@ -66,11 +71,13 @@ struct thread_pool *pool_create(int num_workers) {
 
     p->workers = malloc(sizeof(struct worker)*num_workers);
     p->num_workers = num_workers;
-
+    sema_init(&p->avail_worker_sema, 0);
     for (int i = 0; i < num_workers; i++) {
         p->workers[i].id = i;
         p->workers[i].to_process = NULL;
         p->workers[i].owner = p;
+        p->workers[i].ready = false;
+        sema_init(&p->workers[i].request_sema, 0);
         lock_init(&p->workers[i].to_process_lock);
 
         thread_new(&worker_main, &p->workers[i]);
@@ -88,12 +95,22 @@ struct thread_pool *pool_create(int num_workers) {
 static void worker_main(void *data) {
     struct worker *w = data;
     bool exit = false;
+    
+
+    //  Meddela att "jag" är redo för arbete
+    //  Vänta på att få en request
+    //  Gör request
+    //  repeat 
+    //  Om request som fås är EMPTY avslutas loop
 
     while (!exit) {
+        
+        w->ready = true;                            // Redo att ta arbete
+        sema_up(&w->owner->avail_worker_sema);      // Signalera att en arbetare är tillgänglig
+        sema_down(&w->request_sema);
 
-        // while (w->to_process == NULL)
-        //     ;
-
+        w->ready = false;                           // Har fått arbete
+        
         lock_acquire(&w->to_process_lock);
         const char *request = w->to_process;
         lock_release(&w->to_process_lock);
@@ -103,9 +120,6 @@ static void worker_main(void *data) {
             exit = true;
         } else {
             process_request(w->id, request);
-
-            // Meddela att vi är klara.
-            w->to_process = NULL;
         }
     }
 }
@@ -122,24 +136,28 @@ static void worker_main(void *data) {
  */
 void pool_handle_request(struct thread_pool *pool, const char *request) {
     int id = 0;
-    while (true) {
-        struct worker *worker = &pool->workers[id];
 
-        // Är tråden ledig?
-        //if (worker->to_process == NULL) {
-            // Ja, be den att hantera frågan.
-            lock_acquire(&worker->to_process_lock);
-            worker->to_process = request;
-            lock_release(&worker->to_process_lock);
-            return;
-        //}
+    //  1. Konstantera att det finns minst en arbetare tillgänglig 
+    //  2. Hitta en ledig worker
+    //  3. Ge den en request
 
-        id = id + 1;
-
-        // Om vi kom till slutet, börja om från början igen.
-        if (id >= pool->num_workers)
-            id = 0;
+    sema_down(&pool->avail_worker_sema);
+    for (int i = 0; i < 4; ++i)
+    {
+        if (pool->workers[i].ready)                             // Hitta redo arbeteare
+        {   
+            lock_acquire(&pool->workers[i].to_process_lock);    // Ta kontroll över to_process
+            sema_up(&pool->workers[i].request_sema);            // Meddela att det finns arbete 
+            id = i;
+            break;
+        }
     }
+
+    struct worker *worker = &pool->workers[id];
+
+    // Ja, be den att hantera frågan.
+    worker->to_process = request;
+    lock_release(&worker->to_process_lock);
 }
 
 
