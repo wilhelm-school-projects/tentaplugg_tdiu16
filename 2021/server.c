@@ -21,12 +21,8 @@ struct thread_pool {
 
     // Array av worker-trådar.
     struct worker *workers;
-    
-    struct semaphore worker_sema;
 
-    struct semaphore exit_sema;
-
-    struct semaphore to_process_sema[4];
+    struct semaphore avail_worker_sema;
 };
 
 
@@ -43,6 +39,9 @@ struct worker {
     struct lock to_process_lock;
     bool ready;
 
+    bool ready;
+
+    struct semaphore request_sema;
     // Pekare till den "thread_pool" som tråden hör till.
     struct thread_pool *owner;
 };
@@ -76,13 +75,13 @@ struct thread_pool *pool_create(int num_workers) {
 
     p->workers = malloc(sizeof(struct worker)*num_workers);
     p->num_workers = num_workers;
-
+    sema_init(&p->avail_worker_sema, 0);
     for (int i = 0; i < num_workers; i++) {
         p->workers[i].id = i;
         p->workers[i].to_process = EMPTY;
         p->workers[i].owner = p;
         p->workers[i].ready = false;
-        sema_init(&p->worker_sema, 0);
+        sema_init(&p->workers[i].request_sema, 0);
         lock_init(&p->workers[i].to_process_lock);
 
         sema_init(&p->to_process_sema[i], 0);
@@ -92,6 +91,7 @@ struct thread_pool *pool_create(int num_workers) {
     return p;
 }
 
+struct semaphore program_sema;
 /**
  * Funktion som körs för varje tråd. Tråden väntar på att det ska komma en
  * fråga, och hanterar sedan frågan. Tråden körs till någon skickar den
@@ -103,13 +103,21 @@ struct thread_pool *pool_create(int num_workers) {
 static void worker_main(void *data) {
     struct worker *w = data;
     bool exit = false;
+    
+    //  Meddela att "jag" är redo för arbete
+    //  Vänta på att få en request
+    //  Gör request
+    //  repeat 
+    //  Om request som fås är EMPTY avslutas loop
 
-    while (!exit) 
-    {
-        sema_up(&w->owner->worker_sema);
-        w->ready = true;
+    while (!exit) {
+        
+        w->ready = true;                            // Redo att ta arbete
+        sema_up(&w->owner->avail_worker_sema);      // Signalera att en arbetare är tillgänglig
+        sema_down(&w->request_sema);
 
-        sema_down(&w->owner->to_process_sema[w->id]);
+        w->ready = false;                           // Har fått arbete
+        
         lock_acquire(&w->to_process_lock);
         const char *request = w->to_process;
 
@@ -117,14 +125,13 @@ static void worker_main(void *data) {
         if (request == EMPTY) 
         {
             exit = true;
-        } 
-        else 
-        {
+            sema_up(&program_sema);
+        } else {
             process_request(w->id, request);
-            // Meddela att vi är klara.
             w->to_process = NULL;
             lock_release(&w->to_process_lock);
         }
+        lock_release(&w->to_process_lock);
     }
     sema_up(&w->owner->exit_sema);
     lock_release(&w->to_process_lock);
@@ -133,68 +140,36 @@ static void worker_main(void *data) {
 
 /**
  * Hantera en fråga.
- *
+ * 
  * Hittar en tråd som inte har något att göra för tillfället och ger frågan till
  * den tråden. Funktionen väntar inte på att frågan har hanterats färdigt.
- *
+ * 
  * Om det inte finns någon tråd som kan hantera frågan just nu, väntar
  * implementationen tills en är ledig.
  */
 void pool_handle_request(struct thread_pool *pool, const char *request) {
+    int id = 0;
 
-    // for (int i = 0; i < 4; ++i)
-    // {
-    //     sema_down(&pool->worker_sema[i]);
-    //     id = i;
-    // }
-    // struct worker *worker = &pool->workers[id];
+    //  1. Konstantera att det finns minst en arbetare tillgänglig 
+    //  2. Hitta en ledig worker
+    //  3. Ge den en request
 
-    // // Är tråden ledig?
-    // lock_acquire(&worker->to_process_lock);
-    // if (worker->to_process == NULL) {
-    //     // Ja, be den att hantera frågan.
-    //     worker->to_process = request;
-    //     sema_up(&pool->to_process_sema[i]);
-    //     lock_release(&worker->to_process_lock);
-    //     return;
-    // }
-    // lock_release(&worker->to_process_lock);
-
-    sema_down(&pool->worker_sema);
+    sema_down(&pool->avail_worker_sema);
     for (int i = 0; i < 4; ++i)
     {
-        if (pool->workers[i].ready)
-        {
-            struct worker *worker = &pool->workers[i];
-            
-            // Är tråden ledig?
-            lock_acquire(&worker->to_process_lock);
-            if (worker->to_process == NULL) {
-                // Ja, be den att hantera frågan.
-                worker->to_process = request;
-                sema_up(&pool->to_process_sema[i]);
-                lock_release(&worker->to_process_lock);
-                return;
-            }
-            lock_release(&worker->to_process_lock);
+        if (pool->workers[i].ready)                             // Hitta redo arbeteare
+        {   
+            lock_acquire(&pool->workers[i].to_process_lock);    // Ta kontroll över to_process
+            sema_up(&pool->workers[i].request_sema);            // Meddela att det finns arbete 
+            id = i;
+            break;
         }
-    } 
+    }
 
-    // for (int i = 0; i < 4; ++i)
-    // {
-    //     struct worker *worker = &pool->workers[i];
+    struct worker *worker = &pool->workers[id];
 
-    //     // Är tråden ledig?
-    //     lock_acquire(&worker->to_process_lock);
-    //     if (worker->to_process == NULL) {
-    //         // Ja, be den att hantera frågan.
-    //         worker->to_process = request;
-    //         sema_up(&pool->to_process_sema[i]);
-    //         lock_release(&worker->to_process_lock);
-    //         return;
-    //     }
-    //     lock_release(&worker->to_process_lock);
-    // }
+    worker->to_process = request;
+    lock_release(&worker->to_process_lock);
 }
 
 
@@ -203,6 +178,7 @@ void pool_handle_request(struct thread_pool *pool, const char *request) {
  *
  * Vi antar att ingen annan tråd försöker anropa (eller håller på att köra)
  * "pool_handle_request" på ett objekt som håller på att förstöras, eller har
+    
  * förstörts.
  *
  * Implementationen ska garantera att alla frågor som tidigare har skickats till
@@ -218,10 +194,10 @@ void pool_destroy(struct thread_pool *pool) {
     for (int i = 0; i < pool->num_workers; i++)
         pool_handle_request(pool, EMPTY);
 
-    
+
     for (int i = 0; i < 4; ++i)
     {
-        sema_down(&pool->exit_sema);
+        sema_down(&program_sema);
     }
     free(pool->workers);
     free(pool);
