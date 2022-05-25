@@ -1,0 +1,34 @@
+2. a)
+
+Maximal                 Nuvarande resursanvändning          Terminerade Processer
+--+-----                --+-----------------------          --+------------------     
+  |A B C                  |A B C                            1 |P2|
+--+-----                --+-----                            --+--+
+P1|4 2 2                P1|1 0 1                            2 |P1|
+P2|3 2 3                P2|1 0 1                            --+--+
+P3|3 2 4                P3|1 1 1                            3 |P3|
+                                                            ---------------------
+Behov                   Tillgängliga
+--+-----                --+-----         
+  |A B C                  |A B C
+--+-----   /            --+-----
+P1|3 2 1 \/  /          0 |2 4 2
+P2|2 2 2   \/  /        1 |3 4 3
+P3|2 1 3     \/         2 |4 4 4
+                        3 |5 5 5
+
+
+
+b)
+    P3 lägger till en till sina nuvarande resurser P3|2 1 1
+    och därmed ändras tillgängliga till |1 4 2 vilket innebär
+    att ingen av processerna kan börja. Första gången var det P2 
+    som kunde börja eftersom denna endast behöver 2 2 2, men nu när resursen
+    A har minskats till 1 kan denna inte börja. Vi är inte i ett säkert läge.
+
+c)
+    3.  Bankers algoritm antar ett worst case scenario där alla processer vill ha 
+        sitt maximala antal resurser, men detta behöver inte reflekteras i praktiken
+        då en process kanske endast vill ha några få av sina resurser, och i ett sådant
+        fall hade det varit OK för en process att ta någon extra resurs. Därför bör
+        den få vänta tills förfrågan är OK och först då köra. 
