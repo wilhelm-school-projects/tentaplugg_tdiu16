@@ -85,7 +85,7 @@ struct thread_pool *pool_create(int num_workers) {
     return p;
 }
 
-
+struct semaphore program_sema;
 /**
  * Funktion som körs för varje tråd. Tråden väntar på att det ska komma en
  * fråga, och hanterar sedan frågan. Tråden körs till någon skickar den
@@ -96,7 +96,6 @@ static void worker_main(void *data) {
     struct worker *w = data;
     bool exit = false;
     
-
     //  Meddela att "jag" är redo för arbete
     //  Vänta på att få en request
     //  Gör request
@@ -113,24 +112,26 @@ static void worker_main(void *data) {
         
         lock_acquire(&w->to_process_lock);
         const char *request = w->to_process;
-        lock_release(&w->to_process_lock);
 
         // Ska vi avsluta?
         if (request == EMPTY) {
             exit = true;
+            sema_up(&program_sema);
         } else {
             process_request(w->id, request);
+            w->to_process = NULL;
         }
+        lock_release(&w->to_process_lock);
     }
 }
 
 
 /**
  * Hantera en fråga.
- *
+ * 
  * Hittar en tråd som inte har något att göra för tillfället och ger frågan till
  * den tråden. Funktionen väntar inte på att frågan har hanterats färdigt.
- *
+ * 
  * Om det inte finns någon tråd som kan hantera frågan just nu, väntar
  * implementationen tills en är ledig.
  */
@@ -155,7 +156,6 @@ void pool_handle_request(struct thread_pool *pool, const char *request) {
 
     struct worker *worker = &pool->workers[id];
 
-    // Ja, be den att hantera frågan.
     worker->to_process = request;
     lock_release(&worker->to_process_lock);
 }
@@ -166,13 +166,13 @@ void pool_handle_request(struct thread_pool *pool, const char *request) {
  *
  * Vi antar att ingen annan tråd försöker anropa (eller håller på att köra)
  * "pool_handle_request" på ett objekt som håller på att förstöras, eller har
+    
  * förstörts.
  *
  * Implementationen ska garantera att alla frågor som tidigare har skickats till
  * trådpoolen med "pool_handle_request" ska slutföras. Om någon fortfarande är
  * på gång ska implementationen vänta på att alla blir klara.
  */
-struct semaphore program_sema;
 
 void pool_destroy(struct thread_pool *pool) {
     // Be trådarna att stänga av sig, genom att skicka den speciella strängen
@@ -180,9 +180,13 @@ void pool_destroy(struct thread_pool *pool) {
     for (int i = 0; i < pool->num_workers; i++)
         pool_handle_request(pool, EMPTY);
 
+
+    for (int i = 0; i < 4; ++i)
+    {
+        sema_down(&program_sema);
+    }
     free(pool->workers);
     free(pool);
-    sema_up(&program_sema);
 }
 
 
@@ -211,11 +215,6 @@ int main(void) {
         for (int j = 0; requests[j]; j++) {
             pool_handle_request(pool, requests[j]);
         }
-    }
-
-    for (int i = 0; i < 4; ++i)
-    {
-        sema_down(&program_sema);
     }
     pool_destroy(pool);
 
