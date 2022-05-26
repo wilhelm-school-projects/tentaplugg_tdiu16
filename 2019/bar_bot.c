@@ -17,7 +17,7 @@ Svar på delfråga c:
 
 Svar på delfråga d:
 	Deadlock kan inte uppstå eftersom det görs en swap med avseende på index storlek. Därav
-	uppfylls inte kravet "circular wait".
+	uppfylls inte kravet "circular wait".x
 
 */
 

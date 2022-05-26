@@ -1,16 +1,22 @@
 /**
 
 Svar på delfråga a:
-
+	Busy-wait är när en tråd väntar på att få göra något genom att loopa
+	i en loop tills denna tillåts att göra detta. Varför detta är dåligt är 
+	eftersom den måste ligga och köras i processorn trots att den inte gör 
+	något vettigt. Det bör just därför undvikas och kan göra med t.ex. lås
+	eller semaforer som alltså tillåter tråden att bli preemptad från processorn
+	och därför låta andra trådar köra.   
 
 Svar på delfråga b:
-
+	Se kommentarer i koden.
 
 Svar på delfråga c:
-
+	Se semafor i koden.
 
 Svar på delfråga d:
-
+	I övrigt är koden trådsäker eftersom det enda stället som delar data mellan trådar nu är tråd-
+	säkert med hjälp av semaforer.
 
 */
 
@@ -37,6 +43,8 @@ struct future {
 	// Värdet som lagras inuti future-objektet.
 	int value;
 
+	struct semaphore sema; 
+
 	// Är värdet satt ännu?
 	bool has_value;
 };
@@ -44,20 +52,24 @@ struct future {
 // Initiera ett future-objekt.
 void future_init(struct future *f) {
 	f->has_value = false;
+	sema_init(&f->sema, 0);
 }
 
 // Sätt värdet i ett future-objekt. Vi antar att "future_set" bara anropas en
 // gång per future-objekt.
 void future_set(struct future *f, int value) {
+	
 	f->value = value;
 	f->has_value = true;
+	sema_up(&f->sema);
 }
 
 // Hämta värdet som lagrades tidigare med hjälp av "future_set". Om det inte
 // finns ett värde ännu ska "future_get" vänta på att ett värde sätts.
 int future_get(struct future *f) {
-	while (!f->has_value)
-		;
+	
+	sema_down(&f->sema);
+	sema_up(&f->sema);
 
 	return f->value;
 }
