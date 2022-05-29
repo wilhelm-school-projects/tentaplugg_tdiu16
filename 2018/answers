@@ -1,0 +1,97 @@
+Uppgift 1
+
+    circular wait 
+        -   Om denna är uppfylld är alla de 3 efter också uppfyllda
+        -   Det innebär att de processer som är i systemet håller en resurs samtidigt
+            som de vill ta en annan resurs, men denna hålls av en annan process och detta
+            sker alltså i en cirkel, vilket innebär att alla väntar på varandra att släppa
+            men ingen kan släppa för de håller en resurs.
+
+    mutal exclusion
+        -   Detta innebär att om en process håller en delad resurs, har endast denna
+            rättigheten att använda sig av den. De andra måste vänta tills processen
+            t.ex. släpper låset till resursen.
+
+    no preemptive of resources
+        -   Betyder att endast processen som håller resursen kan släppa taget
+            av den. T.ex. om processen blir preemptad, kommer den inte kunna  
+            ge ifrån sig resursen, även om den nya processen som körs skulle
+            vilja ta den.
+
+    hold and wait
+        - Det finns trådar som håller en resurs och väntar på att ta en ny.
+
+
+    Eftersom alla processer har en resurs samt att de vill ta en uppfylls hold and wait.
+    Mitt antagande är att "no preemptive of resourses" uppfylls eftersom det är antagligen så
+    processorn fungerar. Samma sak för mutual exclusion. Circular wait uppfylls också, eftersom 
+    alla har en resurs och väntar på en som en annan har. Detta medför att ingen kan släppa taget 
+    av sin resurs.
+
+Uppgift 2
+
+    Nuvarande                               
+      |A    B C              
+    --+--------              
+    P1|0    1 1                
+    P2|1+1  0 2                
+    P3|1    2 0                  
+
+    Maximalt
+      |A B C
+    --+-----
+    P1|4 3 2
+    P2|2 0 3
+    P3|2 3 1
+
+    Vill ha
+      |A B C
+    --+-----
+    P1|4 2 1
+    P2|0 0 1                              Processer som lyckats köra
+    P3|1 1 1                                |Resurs efter process lämnat tillbaka
+                                          --+------------------------------------
+                                          P3|2 3 1
+                                          P2|4 3 3
+    Totalt i systemet                     P1|4 4 4
+      |A B C
+    --+-----
+      |4 4 4
+
+    Tillgängligt i systemet vid start
+      |A B C
+    --+-----
+      |1 1 1
+
+    a)  Enligt bankers algoritm ska begäran tillåtas, eftersom alla processer kan
+        köras i säkert läge.
+
+    b)  Deadlock kan att uppstå i framtiden.
+          - Det är inte säkert att alla processer vill ha exakt så många resurser som
+            de vill ha maximalt. Bankers algoritm ränkar på worst case scenario och därför
+            är det möjligt att det går att köra även om bankers algoritm identifierar det 
+            som ett osäkert läge. 
+          - Det skulle även kunna vara så att processen sprider ut sitt resursbehov över
+            en tid där den inte håller alla samtidigt, vilket även det skulle bidra till
+            att deadlock "endast" /kan/ uppstå.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
